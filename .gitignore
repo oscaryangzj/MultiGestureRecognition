@@ -1,0 +1,15 @@
+.DS_Store
+.idea/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+MultiGestureRecognition/
+.venv/
+
+models/hand_landmarker.task
+data/sessions/*/video.mp4
+data/sessions/*/frames.csv
+data/sessions/*/landmarks.csv
+data/splits.json
+runs/

@@ -1,0 +1,30 @@
+data:
+  sessions_dir: data/sessions
+  splits_file: data/splits.json
+  camera_index: 0
+  fps_target: 30
+
+hand_landmarker:
+  model_asset_path: models/hand_landmarker.task
+  delegate: CPU
+  num_hands: 1
+  min_hand_detection_confidence: 0.5
+  min_hand_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+labels:
+  state_classes: ["NULL", closed, opened, thumb_up]
+  state_null_visible_frames: 3
+
+features:
+  local_scale: wrist_to_middle_mcp
+  min_hand_scale: 0.000001
+
+models:
+  state_hidden_size: 128
+
+training:
+  seed: 42
+  batch_size: 64
+  learning_rate: 0.001
+  max_epochs: 30
