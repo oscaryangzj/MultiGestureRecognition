@@ -7,6 +7,7 @@ import numpy as np
 from gesture.config import project_path
 from gesture.features import FEATURE_SIZE, NUM_LANDMARKS, normalize_landmarks
 from gesture.labels import IGNORE_TARGET, make_state_targets
+from gesture.prompts import prompt_labels_for_session
 
 
 def load_session(session_dir):
@@ -54,10 +55,35 @@ def load_landmarks_csv(path):
     )
 
 
-def state_examples_for_session(session_dir, classes, null_visible_frames, config):
+def load_world_landmarks_csv(path):
+    frames = []
+    elapsed = []
+    detected = []
+    points_by_frame = []
+    with Path(path).open(newline="", encoding="utf-8") as stream:
+        for row in csv.DictReader(stream):
+            frame_points = np.zeros((NUM_LANDMARKS, 3), dtype=np.float32)
+            present = row["hand_detected"] == "1"
+            if present:
+                for point_index in range(NUM_LANDMARKS):
+                    frame_points[point_index] = (
+                        float(row[f"x{point_index}"]),
+                        float(row[f"y{point_index}"]),
+                        float(row[f"z{point_index}"]),
+                    )
+            frames.append(int(row["frame_index"]))
+            elapsed.append(float(row["elapsed_seconds"]))
+            detected.append(present)
+            points_by_frame.append(frame_points)
+    if frames != list(range(len(frames))):
+        raise ValueError(f"World landmark frame indices are not contiguous: {path}")
+    return np.asarray(elapsed, dtype=np.float64), np.asarray(detected, dtype=bool), points_by_frame
+
+
+def state_examples_for_session(session_dir, classes, config):
     session = load_session(session_dir)
     if session.get("target_model") != "state":
-        return np.empty((0, FEATURE_SIZE), np.float32), np.empty(0, np.int64)
+        return np.empty((0, FEATURE_SIZE), np.float32), np.empty((0, len(classes)), np.float32)
 
     _, detected, points_by_frame = load_landmarks_csv(session_dir / "landmarks.csv")
     with (session_dir / "annotations.json").open(encoding="utf-8") as stream:
@@ -66,7 +92,7 @@ def state_examples_for_session(session_dir, classes, null_visible_frames, config
         detected,
         annotations.get("state_intervals", []),
         classes,
-        null_visible_frames,
+        prompt_labels_for_session(session, len(detected)),
     )
 
     features = []
@@ -83,8 +109,9 @@ def state_examples_for_session(session_dir, classes, null_visible_frames, config
             features.append(feature)
             labels.append(target)
     if not features:
-        return np.empty((0, FEATURE_SIZE), np.float32), np.empty(0, np.int64)
-    return np.stack(features), np.asarray(labels, dtype=np.int64)
+        return np.empty((0, FEATURE_SIZE), np.float32), np.empty((0, len(classes)), np.float32)
+    binary_targets = np.eye(len(classes), dtype=np.float32)[labels]
+    return np.stack(features), binary_targets
 
 
 def load_state_split(config, split_name):
@@ -114,7 +141,6 @@ def load_state_split(config, split_name):
         features, labels = state_examples_for_session(
             session_dir,
             config["labels"]["state_classes"],
-            config["labels"]["state_null_visible_frames"],
             config["features"],
         )
         if not len(labels):

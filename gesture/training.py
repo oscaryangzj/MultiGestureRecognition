@@ -11,50 +11,59 @@ from gesture.features import FEATURE_SIZE
 from gesture.models import StateMLP
 
 
-def confusion_matrix(targets, predictions, num_classes):
-    result = np.zeros((num_classes, num_classes), dtype=np.int64)
-    for target, prediction in zip(targets, predictions):
-        result[int(target), int(prediction)] += 1
-    return result
-
-
 def metrics_from_predictions(targets, predictions, classes):
-    matrix = confusion_matrix(targets, predictions, len(classes))
+    targets = np.asarray(targets, dtype=bool)
+    predictions = np.asarray(predictions, dtype=bool)
     per_class = {}
     for index, name in enumerate(classes):
-        true_positive = int(matrix[index, index])
-        support = int(matrix[index].sum())
-        predicted = int(matrix[:, index].sum())
+        target = targets[:, index]
+        prediction = predictions[:, index]
+        true_positive = int(np.count_nonzero(target & prediction))
+        false_positive = int(np.count_nonzero(~target & prediction))
+        false_negative = int(np.count_nonzero(target & ~prediction))
+        true_negative = int(np.count_nonzero(~target & ~prediction))
+        support = true_positive + false_negative
+        predicted = true_positive + false_positive
         per_class[name] = {
             "precision": true_positive / predicted if predicted else 0.0,
             "recall": true_positive / support if support else 0.0,
             "support": support,
+            "true_positive": true_positive,
+            "false_positive": false_positive,
+            "false_negative": false_negative,
+            "true_negative": true_negative,
         }
     return {
-        "accuracy": float(np.trace(matrix) / matrix.sum()) if matrix.sum() else 0.0,
-        "confusion_matrix": matrix.tolist(),
+        "accuracy": float(np.all(targets == predictions, axis=1).mean()) if len(targets) else 0.0,
+        "accuracy_definition": "all_state_channels_correct",
         "classes": classes,
         "per_class": per_class,
     }
 
 
-def evaluate_state_model(model, features, labels, batch_size, classes):
+def evaluate_state_model(model, features, labels, batch_size, classes, threshold):
     model.eval()
+    device = next(model.parameters()).device
     loader = DataLoader(
         TensorDataset(torch.from_numpy(features), torch.from_numpy(labels)),
         batch_size=batch_size,
         shuffle=False,
     )
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.BCEWithLogitsLoss()
     total_loss = 0.0
     predictions = []
     with torch.no_grad():
         for batch_features, batch_labels in loader:
+            batch_features = batch_features.to(device)
+            batch_labels = batch_labels.to(device)
             logits = model(batch_features)
             total_loss += float(loss_fn(logits, batch_labels).item()) * len(batch_labels)
-            predictions.extend(logits.argmax(dim=1).cpu().numpy().tolist())
-    result = metrics_from_predictions(labels, np.asarray(predictions), classes)
+            predictions.extend((torch.sigmoid(logits) >= threshold).cpu().numpy())
+    result = metrics_from_predictions(
+        labels, np.asarray(predictions, dtype=bool).reshape(-1, len(classes)), classes
+    )
     result["loss"] = total_loss / len(labels) if len(labels) else 0.0
+    result["threshold"] = threshold
     return result
 
 
@@ -67,17 +76,20 @@ def train_state(config):
     train_x, train_y, train_sessions = load_state_split(config, "train")
     val_x, val_y, val_sessions = load_state_split(config, "val")
     for split_name, labels in (("train", train_y), ("val", val_y)):
-        missing = [name for index, name in enumerate(classes) if index not in labels]
+        missing = [name for index, name in enumerate(classes) if not labels[:, index].any()]
         if missing:
             raise ValueError(f"{split_name} split is missing State classes: {missing}")
     hidden_size = int(config["models"]["state_hidden_size"])
     batch_size = int(config["training"]["batch_size"])
+    threshold = float(config["inference"]["state_threshold"])
 
-    model = StateMLP(FEATURE_SIZE, hidden_size, len(classes))
+    device = torch.device(config["training"]["device"])
+    model = StateMLP(FEATURE_SIZE, hidden_size, len(classes)).to(device)
+    print(f"Training State on {device}")
     optimizer = torch.optim.Adam(
         model.parameters(), lr=float(config["training"]["learning_rate"])
     )
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.BCEWithLogitsLoss()
     loader = DataLoader(
         TensorDataset(torch.from_numpy(train_x), torch.from_numpy(train_y)),
         batch_size=batch_size,
@@ -94,13 +106,15 @@ def train_state(config):
         model.train()
         train_loss = 0.0
         for batch_features, batch_labels in loader:
+            batch_features = batch_features.to(device)
+            batch_labels = batch_labels.to(device)
             optimizer.zero_grad()
             loss = loss_fn(model(batch_features), batch_labels)
             loss.backward()
             optimizer.step()
             train_loss += float(loss.item()) * len(batch_labels)
 
-        val_metrics = evaluate_state_model(model, val_x, val_y, batch_size, classes)
+        val_metrics = evaluate_state_model(model, val_x, val_y, batch_size, classes, threshold)
         history.append(
             {
                 "epoch": epoch + 1,
@@ -117,6 +131,7 @@ def train_state(config):
                     "classes": classes,
                     "input_size": FEATURE_SIZE,
                     "hidden_size": hidden_size,
+                    "output_activation": "sigmoid",
                 },
                 checkpoint_path,
             )
@@ -126,10 +141,13 @@ def train_state(config):
             f"val_accuracy={val_metrics['accuracy']:.3f}"
         )
 
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     model.load_state_dict(checkpoint["state_dict"])
-    val_metrics = evaluate_state_model(model, val_x, val_y, batch_size, classes)
+    val_metrics = evaluate_state_model(model, val_x, val_y, batch_size, classes, threshold)
     result = {
+        "device": str(device),
+        "loss_function": "BCEWithLogitsLoss",
+        "output_activation": "sigmoid",
         "train_sessions": train_sessions,
         "val_sessions": val_sessions,
         "history": history,

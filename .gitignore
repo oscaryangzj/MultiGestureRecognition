@@ -8,8 +8,13 @@ MultiGestureRecognition/
 .venv/
 
 models/hand_landmarker.task
+models/gesture_recognizer.task
 data/sessions/*/video.mp4
 data/sessions/*/frames.csv
 data/sessions/*/landmarks.csv
+data/sessions/*/world_landmarks.csv
+data/sessions/*/state_scores.csv
+data/sessions/*/session.json
+data/sessions/*/annotations.json
 data/splits.json
 runs/

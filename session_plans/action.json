@@ -1,0 +1,26 @@
+{
+  "positive": {
+    "target_model": "action",
+    "kind": "one_shot",
+    "pattern": "alternating",
+    "pairs": 10,
+    "initial_pose": "opened",
+    "practice_pairs": 2,
+    "prepare_seconds": 2,
+    "hold_seconds_range": [0.8, 2.5],
+    "durations_seconds": {"open_hand": 3, "close_hand": 3}
+  },
+  "negative": {
+    "target_model": "action",
+    "kind": "background",
+    "pattern": "negative_task",
+    "prepare_seconds": 3,
+    "tasks": [
+      {"gesture": "move_opened", "prepare_pose": "opened", "instruction": "OPEN PALM: MOVE / ROTATE WRIST", "instruction_zh": "张开手掌，移动或转腕，保持手型", "duration_seconds": 30},
+      {"gesture": "move_closed", "prepare_pose": "closed", "instruction": "FIST: MOVE / ROTATE WRIST", "instruction_zh": "握拳，移动或转腕，保持手型", "duration_seconds": 30},
+      {"gesture": "partial_fingers", "prepare_pose": "opened", "instruction": "SMALL FINGER MOVES; NO FULL OPEN / CLOSE", "instruction_zh": "轻微动手指，避免完整开合", "duration_seconds": 30},
+      {"gesture": "three_fingers_to_fist", "prepare_pose": "closed", "instruction": "FIST -> MIDDLE / RING / PINKY -> FIST; REPEAT", "instruction_zh": "伸出中/无名/小指再握拳，重复；拇/食指保持弯曲", "duration_seconds": 30},
+      {"gesture": "wrist_pitch_opened", "prepare_pose": "opened", "instruction": "OPEN PALM: BEND WRIST UP / DOWN; REPEAT", "instruction_zh": "张开手，手腕上下摆，手指保持伸直", "duration_seconds": 30}
+    ]
+  }
+}

@@ -4,7 +4,9 @@ import numpy as np
 NUM_LANDMARKS = 21
 FEATURE_SIZE = NUM_LANDMARKS * 2
 WRIST = 0
+INDEX_MCP = 5
 MIDDLE_MCP = 9
+PINKY_MCP = 17
 
 
 def normalize_landmarks(points, min_hand_scale, local_scale):

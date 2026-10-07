@@ -3,6 +3,11 @@ data:
   splits_file: data/splits.json
   camera_index: 0
   fps_target: 30
+  action_window_seconds: 8.0
+  action_sample_rate_hz: 30.0
+  action_stride_frames: 5
+  action_background_visible_frames: 3
+  no_hand_reset_frames: 3
 
 hand_landmarker:
   model_asset_path: models/hand_landmarker.task
@@ -12,19 +17,85 @@ hand_landmarker:
   min_hand_presence_confidence: 0.5
   min_tracking_confidence: 0.5
 
+gesture_recognizer:
+  model_asset_path: models/gesture_recognizer.task
+  category_names:
+    closed: Closed_Fist
+    opened: Open_Palm
+    thumb_up: Thumb_Up
+
 labels:
-  state_classes: ["NULL", closed, opened, thumb_up]
-  state_null_visible_frames: 3
+  state_classes: [closed, opened, thumb_up]
+  action_classes: [open_hand, close_hand]
+  action_positive_delay_seconds: 0.1
+  action_positive_duration_seconds: 0.15
+
+display:
+  mirror_preview: true
+  text_font_path: /System/Library/Fonts/STHeiti Medium.ttc
+  annotation_max_width: 960
+  annotation_max_height: 540
+  prompt_colors:  # OpenCV BGR colors, shared by collection and annotation
+    REST: [60, 155, 230]
+    HOLD: [60, 155, 230]
+    PREPARE: [90, 90, 90]
+    NEGATIVE: [150, 100, 55]
+    closed: [210, 115, 70]
+    opened: [85, 165, 65]
+    thumb_up: [175, 95, 145]
+    open_hand: [85, 165, 65]
+    close_hand: [210, 115, 70]
 
 features:
   local_scale: wrist_to_middle_mcp
+  action_include_acceleration: true
+  action_include_finger_angles: true
+  action_finger_angle_triples: [[5, 6, 7], [9, 10, 11], [13, 14, 15], [17, 18, 19], [1, 2, 3]]
+  action_align_palm_axis: true
+  action_canonicalize_hand: true
+  action_wrist_feature: angular_velocity
   min_hand_scale: 0.000001
+  palm_landmark_indices: [0, 5, 9, 13, 17]
+  action_state_classes: [opened, closed]
+  normalization_min_std: 0.000001
 
 models:
   state_hidden_size: 128
+  action_hidden_size: 128
+  action_num_layers: 3
+  action_conv_channels: 128
+  action_conv_kernel_size: 3
+  action_dropout: 0.1
+
+inference:
+  state_threshold: 0.5
+  recordings_dir: runs/state/recordings
+  action_threshold: 0.5
+  action_debounce_seconds: 0.05
+  action_output_dir: runs/action
+  action_finger_angles_output_dir: runs/action_finger_angles
+
+evaluation:
+  action_match_tolerance_seconds: 0.5
+
+annotation:
+  action_state_threshold: 0.5
+  action_stable_frames: 3
+  action_lookback_frames: 15
+  action_motion_threshold: 0.04
+  action_motion_confirm_frames: 2
 
 training:
+  device: mps
   seed: 42
   batch_size: 64
   learning_rate: 0.001
   max_epochs: 30
+  action_batch_size: 32
+  action_mirror_probability: 0.5
+  action_max_positive_weight: 20.0
+  action_gradient_clip: 5.0
+  action_warmup_epochs: 5
+  action_warmup_start_factor: 0.001
+  action_lr_decay_every_epochs: 25
+  action_lr_decay_factor: 0.5
