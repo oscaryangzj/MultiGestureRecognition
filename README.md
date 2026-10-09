@@ -2,6 +2,10 @@
 
 基于摄像头关键点的在线手势识别研究原型：识别静态手型、一次性开合动作，并将左右折返事件组合为周期性挥手（`waving` / BYEBYE）。提供数据采集、人工标注、模型训练、事件评估和摄像头推理的完整流程。
 
+## 演示
+
+[观看在线手势识别 demo](assets/demo.mp4)（38 秒）
+
 **当前已跑通端到端链路，在现有小规模验证集上达到 100% 原子事件召回率（112/112）；现阶段实测使用效果很好。** 目前只采集了少量正样本，已有负样本覆盖也有限；后续需要针对在线误报定向采集更多负样本，并完成独立验收。
 
 一次性动作建模参考 Meta 的 [generic-neuromotor-interface](https://github.com/facebookresearch/generic-neuromotor-interface) 及论文 [A generic non-invasive neuromotor interface for human-computer interaction](https://www.nature.com/articles/s41586-025-09255-w)。本项目使用视觉关键点，特征、采样率和 waving FSM 按摄像头任务设计。
