@@ -7,8 +7,8 @@ __pycache__/
 MultiGestureRecognition/
 .venv/
 
-models/hand_landmarker.task
-models/gesture_recognizer.task
+models/**/*.task
+models/action/evaluation/
 data/sessions/*/video.mp4
 data/sessions/*/frames.csv
 data/sessions/*/landmarks.csv
@@ -18,3 +18,13 @@ data/sessions/*/session.json
 data/sessions/*/annotations.json
 data/splits.json
 runs/
+
+# Local State training and diagnostics
+tests/
+gesture/training.py
+scripts/train_state.py
+scripts/annotate_state.py
+scripts/extract_landmarks.py
+scripts/download_hand_landmarker.py
+scripts/view_action.py
+session_plans/state.json

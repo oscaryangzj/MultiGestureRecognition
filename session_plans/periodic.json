@@ -1,0 +1,30 @@
+{
+  "positive": {
+    "target_model": "action",
+    "kind": "periodic",
+    "pattern": "waving_bouts",
+    "bouts": 5,
+    "prepare_seconds": 2,
+    "wave_seconds_range": [4, 6],
+    "tail_hold_seconds": 0.5,
+    "rest_seconds": 2,
+    "speed_cues": [
+      {"id": "natural", "instruction": "WAVE SIDE TO SIDE AT YOUR NATURAL SPEED", "instruction_zh": "左右自然挥手"},
+      {"id": "slow", "instruction": "WAVE SIDE TO SIDE A LITTLE SLOWER", "instruction_zh": "稍慢地左右挥手"},
+      {"id": "fast", "instruction": "WAVE SIDE TO SIDE A LITTLE FASTER", "instruction_zh": "稍快地左右挥手"}
+    ]
+  },
+  "negative": {
+    "target_model": "action",
+    "kind": "periodic",
+    "pattern": "single_background_task",
+    "prepare_seconds": 3,
+    "reuse_action_tasks": true,
+    "tasks": [
+      {"gesture": "single_side_move", "prepare_pose": "opened", "instruction": "OPEN PALM: MOVE TO ONE SIDE, THEN STOP", "instruction_zh": "张开手掌单向移动，然后停住", "duration_seconds": 30},
+      {"gesture": "single_reversal", "prepare_pose": "opened", "instruction": "OPEN PALM: MOVE ONE WAY, REVERSE ONCE, THEN STOP", "instruction_zh": "张开手掌向一侧移动、折返一次，然后停住", "duration_seconds": 30},
+      {"gesture": "hand_enter_exit", "prepare_pose": "opened", "instruction": "MOVE YOUR OPEN HAND INTO AND OUT OF VIEW", "instruction_zh": "张开手进出画面", "duration_seconds": 30},
+      {"gesture": "endpoint_pause", "prepare_pose": "opened", "instruction": "OPEN PALM: MOVE TO ONE SIDE, HOLD 2S, THEN MOVE BACK; REPEAT", "instruction_zh": "张开手移到一侧，端点停2秒再回移；两端都停，重复", "endpoint_hold_seconds": 2, "duration_seconds": 30}
+    ]
+  }
+}

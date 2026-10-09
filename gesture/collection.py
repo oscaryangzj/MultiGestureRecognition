@@ -39,6 +39,44 @@ def prepare_action_session(template, sample_type, count=1, rng=None, negative_ta
     return session
 
 
+def prepare_periodic_session(template, sample_type, count=1, hand="right", motion="wrist",
+                             rng=None, negative_task=None):
+    if sample_type not in ("positive", "negative") or count <= 0:
+        raise ValueError("Choose periodic positive/negative and a positive count")
+    session = copy.deepcopy(template[sample_type])
+    session.update(sample_type=sample_type, hand=hand, motion=motion if sample_type == "positive" else None,
+                   initial_pose="opened" if sample_type == "positive" else None)
+    rng = rng or random
+    if sample_type == "positive":
+        session["bouts"] = count
+        source_cues = list(session["speed_cues"])
+        cues = []
+        prompts = []
+        for index in range(count):
+            if index % len(source_cues) == 0:
+                cues = source_cues.copy()
+                rng.shuffle(cues)
+            cue = cues[index % len(source_cues)]
+            duration = rng.uniform(*session["wave_seconds_range"])
+            prompts.append({
+                "gesture": "waving", "sample_type": "positive", "hand": hand, "motion": motion,
+                "speed_cue": cue["id"], "instruction": cue["instruction"],
+                "instruction_zh": cue["instruction_zh"], "duration_seconds": duration,
+                "prepare_seconds": float(session["prepare_seconds"]),
+                "tail_hold_seconds": float(session["tail_hold_seconds"]),
+                "rest_seconds": float(session["rest_seconds"]),
+            })
+    else:
+        task = next((item for item in session["tasks"] if item["gesture"] == negative_task), None)
+        if task is None:
+            raise ValueError("Choose a negative task from the periodic collection plan")
+        session["selected_task"] = negative_task
+        session["tasks"] = [task]
+        prompts = [dict(task, sample_type="negative")]
+    session["prompts"] = prompts
+    return session
+
+
 def collection_phases(session):
     """Capture schedule; the selected timings are persisted with each session."""
     action = session["target_model"] == "action"
@@ -53,6 +91,20 @@ def collection_phases(session):
                        "end": cursor + duration, "prompt_index": prompt_index,
                        "instruction": instruction, "instruction_zh": instruction_zh, "pose": pose})
         cursor += duration
+
+    if session.get("kind") == "periodic":
+        for index, prompt in enumerate(session["prompts"]):
+            if prompt["sample_type"] == "negative":
+                add("prepare", prompt["prepare_pose"], float(session["prepare_seconds"]), index)
+                add("negative", prompt["gesture"], float(prompt["duration_seconds"]), index,
+                    prompt["instruction"], prompt["prepare_pose"], prompt["instruction_zh"])
+                continue
+            add("prepare", "opened", float(prompt["prepare_seconds"]), index)
+            add("wave", "waving", float(prompt["duration_seconds"]), index,
+                prompt["instruction"], "opened", prompt["instruction_zh"])
+            add("hold", "opened", float(prompt["tail_hold_seconds"]), index)
+            add("rest", "REST", float(prompt["rest_seconds"]), index)
+        return phases
 
     if action and not negative:
         add("hold", session["initial_pose"], float(session["prepare_seconds"]))

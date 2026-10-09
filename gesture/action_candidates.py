@@ -1,19 +1,24 @@
 import numpy as np
 
 
-def action_opportunities(prompts, frame_count):
+def action_opportunities(prompts, frame_count, session=None):
     recorded = [(index, prompt) for index, prompt in enumerate(prompts)
                 if prompt.get("start_frame") is not None and prompt.get("end_frame") is not None]
+    periodic = bool(session and session.get("kind") == "periodic")
     result = []
     for position, (index, prompt) in enumerate(recorded):
         negative = prompt.get("sample_type") == "negative"
         end = (int(prompt["end_frame"]) if negative else
                int(recorded[position + 1][1]["start_frame"]) - 1 if position + 1 < len(recorded) else frame_count - 1)
+        if periodic and not negative:
+            hold_end = prompt.get("hold_end_frame")
+            end = min(frame_count - 1, int(prompt["end_frame"] if hold_end is None else hold_end))
         result.append({"prompt_index": index, "label": prompt["gesture"],
                        "sample_type": "negative" if negative else "positive",
                        "instruction": prompt.get("instruction", ""),
                        "start_frame": int(prompt["start_frame"]), "end_frame": end,
-                       "prompt_end_frame": int(prompt["end_frame"])})
+                       "prompt_end_frame": int(prompt["end_frame"]),
+                       "activity_end_frame": int(prompt["end_frame"])})
     return result
 
 
@@ -59,29 +64,34 @@ def propose_action_interval(session, opportunity, config):
     return draft
 
 
-def action_excluded_frames(annotations, opportunities, frame_count, config, times=None):
+def action_excluded_frames(annotations, opportunities, frame_count, config, times=None, kind=None):
     """Unreviewed/cancelled regions and negative preparation never supervise."""
     regions = list(annotations.get("action_ignored_intervals", []))
     excluded = np.zeros(frame_count, bool)
     negative = [item for item in opportunities if item.get("sample_type") == "negative"]
     background = set(annotations.get("action_background_prompts", []))
-    if negative:
+    if negative and kind != "periodic":
         excluded[:] = True
         for item in negative:
             if item["prompt_index"] in background:
                 excluded[item["start_frame"]:item["end_frame"] + 1] = False
-    if annotations.get("action_review_mode") == "prompts":
+    if annotations.get("action_review_mode") == "prompts" and kind not in ("periodic", "continuous"):
         resolved = {item["prompt_index"] for item in annotations.get("action_intervals", []) if "prompt_index" in item}
         resolved |= {item["prompt_index"] for item in regions if "prompt_index" in item}
         lookback = int(config["annotation"]["action_lookback_frames"])
         regions += [{"start_frame": max(0, item["start_frame"] - lookback), "end_frame": item["end_frame"]}
-                    for item in opportunities if item.get("sample_type") != "negative" and item["prompt_index"] not in resolved]
+                    for item in opportunities
+                    if item.get("sample_type") != "negative"
+                    and item.get("label") != "waving"
+                    and item["prompt_index"] not in resolved]
     if times is None:
         times = np.arange(frame_count) / float(config["data"]["action_sample_rate_hz"])
     for region in regions:
         start = max(0, int(region["start_frame"]))
         finish = min(frame_count - 1, int(region["end_frame"]))
-        if "action_positive_end_offset_frames" in config["labels"]:
+        if "action_positive_frames" in config["labels"]:
+            end = min(frame_count, finish + int(config["labels"]["action_positive_frames"]))
+        elif "action_positive_end_offset_frames" in config["labels"]:
             end = min(frame_count, finish + int(config["labels"]["action_positive_end_offset_frames"]) + 1)
         else:
             tail = (float(config["labels"]["action_positive_delay_seconds"]) +

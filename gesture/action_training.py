@@ -1,15 +1,19 @@
 import json
+import copy
 
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from gesture.action_data import ActionWindows, action_pulse_frames, collate_action_windows, load_action_split
-from gesture.action_evaluation import action_event_metrics, aggregate_action_metrics
+from gesture.action_data import (ActionWindows, action_pulse_frames, collate_action_windows,
+                                 load_action_split, mirror_action_targets)
+from gesture.action_evaluation import action_event_metrics, action_failure_cases, aggregate_action_metrics
 from gesture.action_features import action_feature_size, action_mirror_motion_indices
 from gesture.action_inference import action_output_directory, predict_action_session, save_action_predictions
+from gesture.action_decoding import events_on_source_frames, write_action_events, write_final_events
 from gesture.models import ActionCNNLSTM
+from gesture.waving_fsm import trace_waving_session
 
 
 def epoch_loss(model, loader, device, positive_weight=None, optimizer=None, gradient_clip=None):
@@ -75,25 +79,37 @@ def action_data_summary(sessions, config):
 
 
 def checkpoint_rank(summary, val_loss):
-    overall = summary["overall"]
+    selection = summary.get("decoded_events") or summary
+    overall = selection["overall"]
     delay = overall["mean_absolute_delay_seconds"]
-    return (summary["macro_f1"], -overall["false_positives_per_minute"],
+    return (selection["macro_f1"], -overall["false_positives_per_minute"],
             -delay if delay is not None else -float("inf"), -val_loss)
 
 
 def train_action(config):
+    config = copy.deepcopy(config)
+    mode = config["inference"].get("action_model_mode", "one_shot")
+    if mode == "one_shot":
+        config["labels"]["action_classes"] = list(config["inference"]["action_event_groups"]["one_shot"])
+    elif mode != "combined":
+        raise ValueError("inference.action_model_mode must be one_shot or combined")
     seed = int(config["training"]["seed"])
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device(config["training"]["device"])
-    if device.type != "mps" or not torch.backends.mps.is_available():
-        raise RuntimeError("Action training requires the available macOS MPS GPU")
+    if device.type == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError("The configured macOS MPS GPU is unavailable")
+    if device.type not in ("mps", "cpu"):
+        raise ValueError("Action training device must be mps or explicitly configured cpu")
+    if device.type == "cpu":
+        torch.set_num_threads(int(config["training"]["action_cpu_threads"]))
     train_sessions = load_action_split(config, "train", resample=True)
     val_sessions = load_action_split(config, "val", resample=True)
     mirror_sessions = []
     if config["training"].get("action_mirror_probability", 0.0):
         for session in val_sessions:
-            mirrored = {**session, "id": session["id"] + "_mirror", "features": session["features"].copy()}
+            mirrored = mirror_action_targets(session, config)
+            mirrored.update(id=session["id"] + "_mirror", features=session["features"].copy())
             mirrored["features"][:, action_mirror_motion_indices(config)] *= -1
             mirror_sessions.append(mirrored)
     classes = config["labels"]["action_classes"]
@@ -145,6 +161,7 @@ def train_action(config):
     print(f"Validation data: {json.dumps(val_summary)}")
     checkpoint = {
         "classes": classes, "input_size": input_size,
+        "model_mode": mode,
         "model_config": model_config, "output_activation": "sigmoid",
         "feature_mean": torch.from_numpy(mean), "feature_std": torch.from_numpy(std),
         "feature_config": config["features"], "no_hand_reset_frames": config["data"]["no_hand_reset_frames"],
@@ -153,7 +170,10 @@ def train_action(config):
         "negative_context": "task",
         "background_visible_frames": config["data"]["action_background_visible_frames"],
         "target_config": {key: config["labels"][key] for key in (
-            "action_positive_delay_seconds", "action_positive_duration_seconds")},
+            "action_positive_frames", "action_one_shot_direction_background",
+            "action_positive_delay_seconds", "action_positive_duration_seconds",
+            "direction_positive_delay_seconds", "direction_positive_duration_seconds")
+            if key in config["labels"]},
     }
     history, best_rank, best_evaluations, best_summary, best_mirror_summary = [], None, None, None, None
     for epoch in range(int(config["training"]["max_epochs"])):
@@ -177,17 +197,27 @@ def train_action(config):
         if best_rank is None or rank > best_rank:
             best_rank, best_evaluations, best_summary, best_mirror_summary = rank, evaluations, summary, mirror_summary
             checkpoint.update(state_dict=model.state_dict(), best_epoch=epoch + 1,
-                              selection_metric="validation_macro_event_f1_with_mirror" if mirror_sessions else "validation_macro_event_f1",
+                              selection_metric="validation_decoded_event_macro_f1_with_mirror" if mirror_sessions else "validation_decoded_event_macro_f1",
                               validation_summary=summary, mirror_validation_summary=mirror_summary,
                               val_loss=val_loss)
             torch.save(checkpoint, path)
             for session in val_sessions:
+                prediction = predictions[session["id"]]
+                trace = trace_waving_session(session, prediction, classes, config)
+                folder = output / "evaluation" / session["id"]
+                write_action_events(folder / "events.csv", events_on_source_frames(session, trace["atomic_events"]))
+                write_final_events(folder / "final_events.csv", events_on_source_frames(session, trace["final_events"]))
                 save_action_predictions(output / "evaluation" / session["id"] / "predictions.csv",
-                                        session, predictions[session["id"]], classes)
+                                        session, prediction, classes, trace)
+                (folder / "failure_cases.json").write_text(
+                    json.dumps(action_failure_cases(session, evaluations[session["id"]], config), indent=2),
+                    encoding="utf-8")
+        decoded = summary["decoded_events"]
         print(f"epoch {epoch + 1}: train_weighted_loss={train_loss:.4f} val_loss={val_loss:.4f} "
-              f"event_macro_f1={summary['macro_f1']:.4f} "
-              f"fp/min={summary['overall']['false_positives_per_minute']:.3f}" +
-              (f" mirror_macro_f1={mirror_summary['macro_f1']:.4f} mirror_fp/min={mirror_summary['overall']['false_positives_per_minute']:.3f}"
+              f"decoded_macro_f1={decoded['macro_f1']:.4f} "
+              f"decoded_fp/min={decoded['overall']['false_positives_per_minute']:.3f}" +
+              (f" mirror_decoded_macro_f1={mirror_summary['decoded_events']['macro_f1']:.4f} "
+               f"mirror_decoded_fp/min={mirror_summary['decoded_events']['overall']['false_positives_per_minute']:.3f}"
                if mirror_summary else ""))
         scheduler.step()
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)

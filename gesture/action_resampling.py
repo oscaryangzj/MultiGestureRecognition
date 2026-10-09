@@ -1,5 +1,6 @@
 import numpy as np
 
+from gesture.action_candidates import action_opportunities
 from gesture.action_features import make_action_features
 
 
@@ -86,6 +87,22 @@ def resample_action_session(session, config):
     features, valid, segments = make_action_features(
         points, detected, scores, times, config, session.get("image_size", (1, 1)), input_regions,
         world_points_by_frame=world_points if use_world else None)
+    annotations = {**session["annotations"]}
+    for key in ("direction_reviewed_intervals", "direction_ignored_intervals",
+                "one_shot_reviewed_intervals", "action_ignored_intervals", "waving_reviewed_intervals",
+                "waving_intervals"):
+        converted = []
+        for item in annotations.get(key, []):
+            begin = float(session["times"][int(item["start_frame"])])
+            finish = float(session["times"][int(item["end_frame"])])
+            start = min(int(np.searchsorted(times, begin, side="left")), len(times) - 1)
+            end = min(int(np.searchsorted(times, finish, side="left")), len(times) - 1)
+            converted_item = {**item, "start_frame": start, "end_frame": end}
+            if key == "waving_intervals":
+                converted_item.update(start_time=begin, end_time=finish)
+            converted.append(converted_item)
+        if key in annotations:
+            annotations[key] = converted
     intervals = []
     for item in session["intervals"]:
         start_time, end_time = session["times"][[item["start_frame"], item["end_frame"]]]
@@ -93,11 +110,21 @@ def resample_action_session(session, config):
         end = min(int(np.searchsorted(times, end_time)), len(times) - 1)
         intervals.append({**item, "start_frame": start, "end_frame": end,
                           "start_time": float(start_time), "end_time": float(end_time)})
-    targets, mask = make_action_targets(valid, segments, intervals, session["reviewed"], config, excluded, times)
+    opportunities = []
+    for item in session["opportunities"]:
+        begin = float(session["times"][int(item["start_frame"])])
+        finish = float(session["times"][int(item["end_frame"])])
+        start = min(int(np.searchsorted(times, begin, side="left")), len(times) - 1)
+        end = min(int(np.searchsorted(times, finish, side="left")), len(times) - 1)
+        opportunities.append({**item, "start_frame": start, "end_frame": end})
+    targets, mask = make_action_targets(
+        valid, segments, intervals, session["reviewed"], config, excluded, times,
+        annotations, opportunities, session.get("kind"), session.get("sample_type"))
     return {**session, "times": times, "points": points, "world_points": world_points,
             "detected": detected, "features": features,
             "valid": valid, "segments": segments, "intervals": intervals, "targets": targets,
-            "mask": mask, "ignored_frames": excluded, "available_times": np.asarray(available),
+            "mask": mask, "annotations": annotations, "opportunities": opportunities,
+            "ignored_frames": excluded, "available_times": np.asarray(available),
             "input_regions": input_regions,
             "source_session": session}
 

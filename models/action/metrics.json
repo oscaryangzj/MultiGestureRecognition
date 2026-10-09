@@ -1,0 +1,388 @@
+{
+  "device": "mps",
+  "classes": [
+    "open_hand",
+    "close_hand",
+    "left_to_right",
+    "right_to_left"
+  ],
+  "input_size": 54,
+  "include_acceleration": true,
+  "base_learning_rate": 0.001,
+  "model_config": {
+    "hidden_size": 128,
+    "num_layers": 3,
+    "conv_channels": 128,
+    "conv_kernel_size": 3,
+    "dropout": 0.1
+  },
+  "sample_rate_hz": 30.0,
+  "negative_context": "task",
+  "mirror_probability": 0.5,
+  "train_sessions": [
+    "20261005_103145_YZJ",
+    "20261005_105003_YZJ",
+    "20261005_105817_YZJ",
+    "20261005_113312_YZJ",
+    "20261005_113934_YZJ",
+    "20261006_102927_YZJ",
+    "20261006_105021_YZJ",
+    "20261006_105945_YZJ",
+    "20261006_142942_YZJ",
+    "20261006_144757_YZJ",
+    "20261006_151641_YZJ",
+    "20261006_153310_YZJ",
+    "20261007_111938_YZJ",
+    "20261008_105935_YZJ",
+    "20261008_114052_YZJ",
+    "20261008_115436_YZJ",
+    "20261008_173322_YZJ",
+    "20261008_173023_YZJ"
+  ],
+  "val_sessions": [
+    "20261005_111124_YZJ",
+    "20261005_114300_YZJ",
+    "20261006_143110_YZJ",
+    "20261006_145931_YZJ",
+    "20261006_153552_YZJ",
+    "20261008_150114_YZJ",
+    "20261008_173524_YZJ"
+  ],
+  "train_windows": 4158,
+  "val_windows": 1594,
+  "stride_frames": 5,
+  "positive_weights": [
+    20.0,
+    20.0,
+    20.0,
+    20.0
+  ],
+  "best_epoch": 23,
+  "selection_metric": "validation_decoded_event_macro_f1_with_mirror",
+  "train_data_summary": {
+    "sessions": {
+      "positive": 10,
+      "negative": 8
+    },
+    "supervised_seconds": 1037.1333333333334,
+    "events": {
+      "open_hand": 60,
+      "close_hand": 59,
+      "left_to_right": 144,
+      "right_to_left": 150
+    },
+    "positive_target_frames": {
+      "open_hand": 240,
+      "close_hand": 236,
+      "left_to_right": 576,
+      "right_to_left": 597
+    },
+    "background_target_frames": {
+      "open_hand": 30921,
+      "close_hand": 30925,
+      "left_to_right": 21202,
+      "right_to_left": 21181
+    }
+  },
+  "val_data_summary": {
+    "sessions": {
+      "positive": 3,
+      "negative": 4
+    },
+    "supervised_seconds": 380.16666666666674,
+    "events": {
+      "open_hand": 20,
+      "close_hand": 20,
+      "left_to_right": 35,
+      "right_to_left": 37
+    },
+    "positive_target_frames": {
+      "open_hand": 80,
+      "close_hand": 80,
+      "left_to_right": 140,
+      "right_to_left": 147
+    },
+    "background_target_frames": {
+      "open_hand": 11340,
+      "close_hand": 11340,
+      "left_to_right": 7256,
+      "right_to_left": 7249
+    }
+  },
+  "validation_summary": {
+    "duration_seconds": 381.1666666666667,
+    "per_class": {
+      "open_hand": {
+        "true_positive": 20,
+        "false_positive": 1,
+        "false_negative": 0,
+        "precision": 0.9523809523809523,
+        "recall": 1.0,
+        "f1": 0.975609756097561,
+        "false_positives_per_minute": 0.15782551512494516,
+        "mean_delay_seconds": 0.10537838550517335,
+        "mean_absolute_delay_seconds": 0.10537838550517335
+      },
+      "close_hand": {
+        "true_positive": 20,
+        "false_positive": 1,
+        "false_negative": 0,
+        "precision": 0.9523809523809523,
+        "recall": 1.0,
+        "f1": 0.975609756097561,
+        "false_positives_per_minute": 0.15782551512494516,
+        "mean_delay_seconds": 0.06720307521754876,
+        "mean_absolute_delay_seconds": 0.06720307521754876
+      },
+      "left_to_right": {
+        "true_positive": 35,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "false_positives_per_minute": 0.0,
+        "mean_delay_seconds": 0.08757882030414683,
+        "mean_absolute_delay_seconds": 0.08757882030414683
+      },
+      "right_to_left": {
+        "true_positive": 37,
+        "false_positive": 1,
+        "false_negative": 0,
+        "precision": 0.9736842105263158,
+        "recall": 1.0,
+        "f1": 0.9866666666666667,
+        "false_positives_per_minute": 0.24363833243096916,
+        "mean_delay_seconds": 0.08924157997417087,
+        "mean_absolute_delay_seconds": 0.08924157997417087
+      }
+    },
+    "overall": {
+      "true_positive": 112,
+      "false_positive": 3,
+      "false_negative": 0,
+      "precision": 0.9739130434782609,
+      "recall": 1.0,
+      "f1": 0.986784140969163,
+      "false_positives_per_minute": 0.14367051561751717,
+      "mean_delay_seconds": 0.08766809271557056,
+      "mean_absolute_delay_seconds": 0.08766809271557056
+    },
+    "macro_f1": 0.9844715447154472,
+    "decoded_events": {
+      "duration_seconds": 381.1666666666667,
+      "per_class": {
+        "open_hand": {
+          "true_positive": 20,
+          "false_positive": 1,
+          "false_negative": 0,
+          "precision": 0.9523809523809523,
+          "recall": 1.0,
+          "f1": 0.975609756097561,
+          "false_positives_per_minute": 0.15782551512494516,
+          "mean_delay_seconds": 0.04659923751605675,
+          "mean_absolute_delay_seconds": 0.04659923751605675
+        },
+        "close_hand": {
+          "true_positive": 20,
+          "false_positive": 1,
+          "false_negative": 0,
+          "precision": 0.9523809523809523,
+          "recall": 1.0,
+          "f1": 0.975609756097561,
+          "false_positives_per_minute": 0.15782551512494516,
+          "mean_delay_seconds": 0.026563660451211037,
+          "mean_absolute_delay_seconds": 0.033224560460075735
+        },
+        "left_to_right": {
+          "true_positive": 35,
+          "false_positive": 0,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "false_positives_per_minute": 0.0,
+          "mean_delay_seconds": 0.005701580949659858,
+          "mean_absolute_delay_seconds": 0.005701580949659858
+        },
+        "right_to_left": {
+          "true_positive": 37,
+          "false_positive": 1,
+          "false_negative": 0,
+          "precision": 0.9736842105263158,
+          "recall": 1.0,
+          "f1": 0.9866666666666667,
+          "false_positives_per_minute": 0.24363833243096916,
+          "mean_delay_seconds": 0.012560411079509838,
+          "mean_absolute_delay_seconds": 0.012560411079509838
+        }
+      },
+      "overall": {
+        "true_positive": 112,
+        "false_positive": 3,
+        "false_negative": 0,
+        "precision": 0.9739130434782609,
+        "recall": 1.0,
+        "f1": 0.986784140969163,
+        "false_positives_per_minute": 0.14367051561751717,
+        "mean_delay_seconds": 0.01899596877254745,
+        "mean_absolute_delay_seconds": 0.020185415202701864
+      },
+      "macro_f1": 0.9844715447154472
+    },
+    "waving_fsm": {
+      "reviewed_duration_seconds": 246.26666666666665,
+      "true_positive": 4,
+      "false_positive": 8,
+      "false_negative": 1,
+      "precision": 0.3333333333333333,
+      "recall": 0.8,
+      "f1": 0.47058823529411764,
+      "false_starts_per_minute": 1.9491066594477533,
+      "mean_active_coverage": 0.3320125625008655
+    }
+  },
+  "mirror_validation_summary": {
+    "duration_seconds": 381.1666666666667,
+    "per_class": {
+      "open_hand": {
+        "true_positive": 20,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "false_positives_per_minute": 0.0,
+        "mean_delay_seconds": 0.11204103339696303,
+        "mean_absolute_delay_seconds": 0.11204103339696303
+      },
+      "close_hand": {
+        "true_positive": 20,
+        "false_positive": 2,
+        "false_negative": 0,
+        "precision": 0.9090909090909091,
+        "recall": 1.0,
+        "f1": 0.9523809523809523,
+        "false_positives_per_minute": 0.31565103024989033,
+        "mean_delay_seconds": 0.07057540023233741,
+        "mean_absolute_delay_seconds": 0.07057540023233741
+      },
+      "left_to_right": {
+        "true_positive": 37,
+        "false_positive": 2,
+        "false_negative": 0,
+        "precision": 0.9487179487179487,
+        "recall": 1.0,
+        "f1": 0.9736842105263158,
+        "false_positives_per_minute": 0.4872766648619383,
+        "mean_delay_seconds": 0.08288499999262795,
+        "mean_absolute_delay_seconds": 0.08288499999262795
+      },
+      "right_to_left": {
+        "true_positive": 35,
+        "false_positive": 1,
+        "false_negative": 0,
+        "precision": 0.9722222222222222,
+        "recall": 1.0,
+        "f1": 0.9859154929577465,
+        "false_positives_per_minute": 0.24363833243096916,
+        "mean_delay_seconds": 0.0828581655131919,
+        "mean_absolute_delay_seconds": 0.0828581655131919
+      }
+    },
+    "overall": {
+      "true_positive": 112,
+      "false_positive": 5,
+      "false_negative": 0,
+      "precision": 0.9572649572649573,
+      "recall": 1.0,
+      "f1": 0.9781659388646288,
+      "false_positives_per_minute": 0.2394508593625286,
+      "mean_delay_seconds": 0.085884905939955,
+      "mean_absolute_delay_seconds": 0.085884905939955
+    },
+    "macro_f1": 0.9779951639662536,
+    "decoded_events": {
+      "duration_seconds": 381.1666666666667,
+      "per_class": {
+        "open_hand": {
+          "true_positive": 20,
+          "false_positive": 0,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "false_positives_per_minute": 0.0,
+          "mean_delay_seconds": 0.04663686256390065,
+          "mean_absolute_delay_seconds": 0.04663686256390065
+        },
+        "close_hand": {
+          "true_positive": 20,
+          "false_positive": 2,
+          "false_negative": 0,
+          "precision": 0.9090909090909091,
+          "recall": 1.0,
+          "f1": 0.9523809523809523,
+          "false_positives_per_minute": 0.31565103024989033,
+          "mean_delay_seconds": 0.02889321045950055,
+          "mean_absolute_delay_seconds": 0.03555411046836525
+        },
+        "left_to_right": {
+          "true_positive": 37,
+          "false_positive": 2,
+          "false_negative": 0,
+          "precision": 0.9487179487179487,
+          "recall": 1.0,
+          "f1": 0.9736842105263158,
+          "false_positives_per_minute": 0.4872766648619383,
+          "mean_delay_seconds": 4.5599132725918616e-05,
+          "mean_absolute_delay_seconds": 0.0072634571949271734
+        },
+        "right_to_left": {
+          "true_positive": 35,
+          "false_positive": 1,
+          "false_negative": 0,
+          "precision": 0.9722222222222222,
+          "recall": 1.0,
+          "f1": 0.9859154929577465,
+          "false_positives_per_minute": 0.24363833243096916,
+          "mean_delay_seconds": 0.01138867145803358,
+          "mean_absolute_delay_seconds": 0.01138867145803358
+        }
+      },
+      "overall": {
+        "true_positive": 112,
+        "false_positive": 5,
+        "false_negative": 0,
+        "precision": 0.9572649572649573,
+        "recall": 1.0,
+        "f1": 0.9781659388646288,
+        "false_positives_per_minute": 0.2394508593625286,
+        "mean_delay_seconds": 0.017061536869732663,
+        "mean_absolute_delay_seconds": 0.020635454266864275
+      },
+      "macro_f1": 0.9779951639662536
+    },
+    "waving_fsm": {
+      "reviewed_duration_seconds": 246.26666666666665,
+      "true_positive": 4,
+      "false_positive": 13,
+      "false_negative": 1,
+      "precision": 0.23529411764705882,
+      "recall": 0.8,
+      "f1": 0.36363636363636365,
+      "false_starts_per_minute": 3.1672983216025994,
+      "mean_active_coverage": 0.38759937810772993
+    }
+  },
+  "waving_continuous": {
+    "pair_timeout_seconds": 0.5,
+    "active_timeout_seconds": 0.6,
+    "true_positive": 5,
+    "false_positive": 0,
+    "false_negative": 0,
+    "mean_active_coverage": 1.0,
+    "stop_delay_median_seconds": 0.5003724170383066,
+    "stop_delay_max_seconds": 0.8334681671112776
+  }
+}

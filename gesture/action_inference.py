@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
+from gesture.action_decoding import ActionThresholdDecoder
 from gesture.action_features import ACTION_FEATURE_SIZE, ActionFeatureExtractor
 from gesture.action_resampling import ActionResampler, scores_on_source_frames
 from gesture.config import project_path
@@ -13,20 +14,30 @@ from gesture.models import ActionCNNLSTM, ActionLSTM
 
 
 def action_output_directory(config):
-    output_key = ("action_finger_angles_output_dir"
-                  if config["features"].get("action_include_finger_angles", False) else "action_output_dir")
-    return project_path(config["inference"][output_key])
+    mode = config["inference"].get("action_model_mode", "one_shot")
+    if mode not in ("one_shot", "combined"):
+        raise ValueError("inference.action_model_mode must be one_shot or combined")
+    output_key = "action_combined_output_dir" if mode == "combined" else "action_one_shot_output_dir"
+    return project_path(config["inference"].get(output_key, config["inference"]["action_output_dir"]))
 
 
 def load_action_model(config, device=None):
     path = action_output_directory(config) / "model.pt"
-    if not path.is_file() and config["features"].get("action_include_finger_angles", False):
-        # Let users continue to run the previous model until the angle model is trained.
-        path = project_path(config["inference"]["action_output_dir"]) / "model.pt"
+    if not path.is_file() and config["inference"].get("action_model_mode", "one_shot") == "one_shot":
+        # Keep the existing one-shot checkpoint available until the dedicated output exists.
+        legacy_key = ("action_finger_angles_output_dir"
+                      if config["features"].get("action_include_finger_angles", False) else "action_output_dir")
+        path = project_path(config["inference"].get(legacy_key, config["inference"]["action_output_dir"])) / "model.pt"
     if not path.is_file():
-        raise FileNotFoundError("Train Action first: python -m scripts.train_action")
+        raise FileNotFoundError(
+            f"No Action checkpoint for mode={config['inference'].get('action_model_mode', 'one_shot')}; "
+            "train the selected model with python -m scripts.train_action"
+        )
     device = torch.device(device or config["training"]["device"])
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    configured_mode = config["inference"].get("action_model_mode", "one_shot")
+    if checkpoint.get("model_mode", configured_mode) != configured_mode:
+        raise ValueError(f"Checkpoint mode {checkpoint.get('model_mode')} does not match configured mode {configured_mode}")
     if "model_config" in checkpoint:
         model = ActionCNNLSTM(checkpoint["input_size"], num_classes=len(checkpoint["classes"]), **checkpoint["model_config"])
     else:
@@ -42,6 +53,9 @@ def preprocessing_config(config, checkpoint):
     result["data"]["no_hand_reset_frames"] = checkpoint["no_hand_reset_frames"]
     result["data"]["action_window_seconds"] = checkpoint["window_seconds"]
     result["labels"]["action_classes"] = checkpoint["classes"]
+    for key in tuple(result["labels"]):
+        if key.startswith(("action_positive_", "direction_positive_")) or key == "action_one_shot_direction_background":
+            del result["labels"][key]
     result["labels"].update(checkpoint["target_config"])
     result["data"]["action_background_visible_frames"] = checkpoint["background_visible_frames"]
     if "sample_rate_hz" in checkpoint:
@@ -64,6 +78,7 @@ class OnlineActionPredictor:
         self.resampler = ActionResampler(checkpoint["sample_rate_hz"]) if "sample_rate_hz" in checkpoint else None
         self.last_scores = None
         self.emissions = []
+        self.timed_emissions = []
 
     @torch.inference_mode()
     def update(self, points, state_scores, elapsed, image_size=(1, 1), world_points=None):
@@ -75,12 +90,14 @@ class OnlineActionPredictor:
         else:
             samples = [(elapsed, points, state_scores, world_points)]
         self.emissions = []
+        self.timed_emissions = []
         any_reset = False
         for observed, sample_points, sample_scores, sample_world_points in samples:
             scores, reset = self._predict_sample(sample_points, sample_scores, observed, image_size,
                                                  sample_world_points)
             self.last_scores = scores
             self.emissions.append((scores, reset))
+            self.timed_emissions.append((scores, reset, observed, float(elapsed)))
             any_reset |= reset
         if points is None or state_scores is None:
             return None, any_reset
@@ -98,34 +115,6 @@ class OnlineActionPredictor:
         inputs = torch.from_numpy(np.stack([item[1] for item in self.history])).unsqueeze(0).to(self.device)
         scores = torch.sigmoid(self.model(inputs)[0, -1]).cpu().numpy()
         return scores, reset
-
-
-class ActionThresholdDecoder:
-    """Meta-style threshold crossings and debounce for live inspection."""
-
-    def __init__(self, classes, config):
-        self.classes = classes
-        self.threshold = float(config["inference"]["action_threshold"])
-        self.debounce = float(config["inference"]["action_debounce_seconds"])
-        self.reset()
-
-    def reset(self):
-        self.previous_above = np.zeros(len(self.classes), bool)
-        self.last_event_time = None
-
-    def update(self, scores, elapsed):
-        if scores is None:
-            return []
-        above = np.asarray(scores) >= self.threshold
-        crossings = np.flatnonzero(above & ~self.previous_above)
-        self.previous_above = above
-        events = []
-        for channel in crossings:
-            if self.last_event_time is not None and elapsed - self.last_event_time < self.debounce:
-                continue
-            events.append(int(channel))
-            self.last_event_time = elapsed
-        return events
 
 
 def rolling_contexts(session, seconds):
@@ -166,12 +155,17 @@ def predict_action_session(model, session, checkpoint, batch_size):
     return predictions
 
 
-def save_action_predictions(path, session, predictions, classes):
+def save_action_predictions(path, session, predictions, classes, waving_trace=None):
+    if waving_trace is not None:
+        from gesture.waving_fsm import source_waving_trace
+        waving_trace = source_waving_trace(session, waving_trace)
     if "source_session" in session:
         session, predictions = scores_on_source_frames(session, predictions)
     path.parent.mkdir(parents=True, exist_ok=True)
     columns = ["frame_index", "elapsed_seconds", "valid"]
     columns += [f"{name}_{suffix}" for name in classes for suffix in ("score", "target", "supervised")]
+    if waving_trace is not None:
+        columns += ["waving_state", "waving_active", "waving_expected_direction"]
     with path.open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
@@ -181,4 +175,8 @@ def save_action_predictions(path, session, predictions, classes):
                 row[f"{name}_score"] = float(predictions[frame, channel]) if session["valid"][frame] else ""
                 row[f"{name}_target"] = float(session["targets"][frame, channel])
                 row[f"{name}_supervised"] = int(session["mask"][frame, channel])
+            if waving_trace is not None:
+                row["waving_state"] = waving_trace["state"][frame]
+                row["waving_active"] = int(waving_trace["active"][frame])
+                row["waving_expected_direction"] = waving_trace["expected_direction"][frame]
             writer.writerow(row)

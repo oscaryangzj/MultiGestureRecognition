@@ -8,7 +8,7 @@ from datetime import datetime
 import cv2
 
 from gesture.config import load_config, project_path
-from gesture.collection import collection_phases, prepare_action_session
+from gesture.collection import collection_phases, prepare_action_session, prepare_periodic_session
 from gesture.display_text import draw_text
 
 
@@ -79,6 +79,9 @@ def show_phase(frame, phase, config, prompt_count, practice=False):
         label_zh, label, color = "休息", "REST", colors["REST"]
     elif kind == "negative":
         label_zh, label, color = phase["instruction_zh"], phase["instruction"], colors["NEGATIVE"]
+    elif kind == "wave":
+        label_zh, label = phase["instruction_zh"], phase["instruction"]
+        color = colors.get("waving", colors["opened"])
     else:
         color = colors[gesture]
         if kind == "action":
@@ -104,7 +107,10 @@ def show_phase(frame, phase, config, prompt_count, practice=False):
 
 
 def practice(cap, window, session, config):
-    plan = prepare_action_session({"positive": session}, "positive", int(session["practice_pairs"]))
+    if session.get("kind") == "periodic":
+        plan = dict(session, prompts=session["prompts"][:1])
+    else:
+        plan = prepare_action_session({"positive": session}, "positive", int(session["practice_pairs"]))
     phases = collection_phases(plan)
     started = time.monotonic()
     while True:
@@ -141,8 +147,20 @@ def wait_for_start(cap, window, session, config):
         height, width = frame.shape[:2]
         shown = cv2.flip(frame, 1) if config["display"]["mirror_preview"] else frame.copy()
         cv2.rectangle(shown, (0, 0), (width, 140), (0, 0, 0), -1)
+        periodic = session.get("kind") == "periodic"
+        if periodic and positive:
+            hand_zh = "左手" if session["hand"] == "left" else "右手"
+            hand_en = "left" if session["hand"] == "left" else "right"
+            motion_zh = "手腕" if session["motion"] == "wrist" else "肘部"
+            motion_en = "wrist" if session["motion"] == "wrist" else "elbow"
+            instruction = (f"掌心朝向摄像头，用{hand_zh}沿{motion_zh}左右挥动",
+                           f"Face your palm to camera; wave with your {hand_en} {motion_en}.")
+        elif periodic:
+            instruction = ("张开手掌，按提示左右挥动", "Open your palm and wave as cued.")
+        else:
+            instruction = ("每次做一个动作，然后保持", "One motion per cue, then hold.")
         lines = [("整只手入镜，点击开始", "Keep the full hand in view; click START."),
-                 ("每次做一个动作，然后保持", "One motion per cue, then hold.") if positive else
+                 instruction if positive else
                  (session["prompts"][0]["instruction_zh"], session["prompts"][0]["instruction"]) if negative else
                  ("做出手型并保持，休息时放松", "Hold the shape; relax during REST.")]
         font_path = config["display"]["text_font_path"]
@@ -153,11 +171,14 @@ def wait_for_start(cap, window, session, config):
         if negative:
             hint = (f"准备 / PREPARE {session['prepare_seconds']:g}s | "
                     f"采集 / RECORD {session['prompts'][0]['duration_seconds']:g}s | Q退出 / EXIT")
+        elif periodic:
+            hint = (f"{session['bouts']} 段 / bouts | WAVE {session['wave_seconds_range'][0]:g}–"
+                    f"{session['wave_seconds_range'][1]:g}s | Q退出 / EXIT")
         draw_text(shown, hint, (16, 116), 16, (200, 200, 200), font_path, max_width=width - 32)
         buttons = {"start": (width // 2 + 10 if positive else width // 4, height - 90, width * 3 // 4, height - 30)}
         if positive:
             buttons["practice"] = (width // 4, height - 90, width // 2 - 10, height - 30)
-            draw_pose_icon(shown, session["initial_pose"], config)
+            draw_pose_icon(shown, session.get("initial_pose", "opened"), config)
         for action, bounds in buttons.items():
             left, top, right, bottom = bounds
             cv2.rectangle(shown, (left, top), (right, bottom), (40, 140, 40) if action == "start" else (150, 100, 40), -1)
@@ -176,17 +197,40 @@ def wait_for_start(cap, window, session, config):
 
 def main():
     parser = argparse.ArgumentParser(description="Collect gesture sessions")
-    parser.add_argument("--plan", required=True, choices=("state", "action", "periodic"), help="Collection plan")
+    plans = tuple(name for name in ("state", "action", "periodic")
+                  if project_path(f"session_plans/{name}.json").is_file())
+    parser.add_argument("--plan", required=True, choices=plans, help="Collection plan")
     args = parser.parse_args()
-    if args.plan == "periodic":
-        parser.error("Periodic collection is not enabled yet")
     collector = input("Name: ").strip()
     collector_slug = "".join(char if char.isalnum() or char in "-_" else "_" for char in collector).strip("-_")
     if not collector_slug:
         raise ValueError("Name must contain a letter or digit")
     config = load_config()
     template = json.loads(project_path(f"session_plans/{args.plan}.json").read_text(encoding="utf-8"))
-    if args.plan == "action":
+    if args.plan == "periodic" and template["negative"].get("reuse_action_tasks"):
+        action_template = json.loads(project_path("session_plans/action.json").read_text(encoding="utf-8"))
+        template["negative"]["tasks"] = action_template["negative"]["tasks"] + template["negative"]["tasks"]
+        mode = input("Type [1 positive / 2 negative] (default 1): ").strip() or "1"
+        if mode not in ("1", "2", "positive", "negative"):
+            parser.error("Choose positive or negative")
+        sample_type = "positive" if mode in ("1", "positive") else "negative"
+        if sample_type == "positive":
+            hands = ("left", "right")
+            motions = ("wrist", "elbow")
+            print("Hand: 1 left, 2 right; movement: 1 wrist, 2 elbow.")
+            hand_choice = input("Hand [1/2] (default 2): ").strip() or "2"
+            motion_choice = input("Movement [1/2] (default 1): ").strip() or "1"
+            if hand_choice not in ("1", "2") or motion_choice not in ("1", "2"):
+                parser.error("Choose hand and movement from 1 or 2")
+            count = ask_count("Waving bouts", int(template["positive"]["bouts"]))
+            session = prepare_periodic_session(
+                template, sample_type, count, hands[int(hand_choice) - 1], motions[int(motion_choice) - 1])
+            print("Keep an open palm facing the camera; wave continuously during each WAVE cue.")
+        else:
+            task = ask_negative_task(template["negative"]["tasks"])
+            session = prepare_periodic_session(template, sample_type, negative_task=task)
+            print("Perform only the selected background task.")
+    elif args.plan == "action":
         while True:
             mode = input("Type [1 positive / 2 negative] (default 1): ").strip() or "1"
             if mode in ("1", "2", "positive", "negative"):
@@ -218,7 +262,9 @@ def main():
         raise RuntimeError("Could not open camera")
     window = f"{args.plan.title()} data collection"
     writer, rows = None, []
-    prompts = [dict(prompt, start_frame=None, end_frame=None) for prompt in session["prompts"]]
+    prompts = [dict(prompt, start_frame=None, end_frame=None, hold_end_frame=None)
+               for prompt in session["prompts"]]
+    recorded_phases = []
     try:
         if not wait_for_start(cap, window, session, config):
             return
@@ -241,11 +287,23 @@ def main():
                 break
             phase = next(item for item in phases if item["begin"] <= elapsed < item["end"])
             frame_index = len(rows)
-            if phase["phase"] in ("state", "action", "negative"):
+            if phase["phase"] in ("state", "action", "negative", "wave"):
                 prompt = prompts[phase["prompt_index"]]
                 if prompt["start_frame"] is None:
                     prompt["start_frame"] = frame_index
                 prompt["end_frame"] = frame_index
+            if phase["phase"] == "hold" and phase["prompt_index"] is not None:
+                prompts[phase["prompt_index"]]["hold_end_frame"] = frame_index
+            if (not recorded_phases or recorded_phases[-1]["phase"] != phase["phase"]
+                    or recorded_phases[-1]["prompt_index"] != phase["prompt_index"]):
+                recorded_phases.append({
+                    "phase": phase["phase"], "prompt_index": phase["prompt_index"],
+                    "start_frame": frame_index, "end_frame": frame_index,
+                    "start_seconds": elapsed, "end_seconds": elapsed,
+                })
+            else:
+                recorded_phases[-1]["end_frame"] = frame_index
+                recorded_phases[-1]["end_seconds"] = elapsed
             cv2.imshow(window, show_phase(frame, dict(phase, elapsed=elapsed), config, len(prompts)))
             writer.write(frame)
             rows.append((frame_index, elapsed))
@@ -261,16 +319,26 @@ def main():
         output.writerow(["frame_index", "elapsed_seconds"])
         output.writerows(rows)
     session["prompts"] = prompts
+    session["phases"] = recorded_phases
     (folder / "session.json").write_text(json.dumps(session, indent=2, ensure_ascii=False), encoding="utf-8")
     annotations = {"session_id": session_id, f"{args.plan}_intervals": []}
     if args.plan == "action":
         annotations.update(action_reviewed=False, action_review_mode="prompts", action_candidates=[],
                            action_ignored_intervals=[], action_background_prompts=[])
+    elif args.plan == "periodic":
+        annotations.update(
+            action_review_mode="prompts", action_reviewed=False, action_candidates=[],
+            action_ignored_intervals=[], action_background_prompts=[],
+            direction_candidates=[], direction_reviewed_intervals=[],
+            direction_ignored_intervals=[], one_shot_reviewed_intervals=[],
+            waving_intervals=[],
+        )
     (folder / "annotations.json").write_text(json.dumps(annotations, indent=2), encoding="utf-8")
     print(f"Saved {len(rows)} frames: {folder}")
     extractor = "extract_landmarks" if args.plan == "state" else "extract_action"
     print(f"Next: python -m scripts.{extractor} --session-id {session_id}")
-    print(f"Then: python -m scripts.annotate_{args.plan} --session-id {session_id}")
+    annotator = "annotate_state" if args.plan == "state" else "annotate_action"
+    print(f"Then: python -m scripts.{annotator} --session-id {session_id}")
 
 
 if __name__ == "__main__":

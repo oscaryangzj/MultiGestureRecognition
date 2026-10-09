@@ -4,6 +4,7 @@ from gesture.action_annotations import ActionAnnotationEditor
 from gesture.action_data import load_action_session
 from gesture.action_ui import show_action_session
 from gesture.config import load_config
+from gesture.periodic_annotations import PeriodicAnnotationEditor
 
 
 def main():
@@ -12,10 +13,11 @@ def main():
     args = parser.parse_args()
     config = load_config()
     session = load_action_session(config, args.session_id)
-    if not session["opportunities"]:
+    if not session["opportunities"] and session.get("kind") != "continuous":
         raise ValueError("This session has no recorded Action prompts to review")
     annotations = session["annotations"]
-    editor = ActionAnnotationEditor(annotations, len(session["times"]), session["detected"], config["labels"]["action_classes"], session, config)
+    editor_class = PeriodicAnnotationEditor if session.get("kind") == "periodic" else ActionAnnotationEditor
+    editor = editor_class(annotations, len(session["times"]), session["detected"], config["labels"]["action_classes"], session, config)
     show_action_session(config, session, editor)
 
 

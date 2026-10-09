@@ -1,4 +1,6 @@
 mediapipe==0.10.35
+ai-edge-litert==2.3.0
+ml_dtypes==0.5.4
 numpy==1.26.4
 opencv-contrib-python==4.11.0.86
 Pillow==12.3.0
