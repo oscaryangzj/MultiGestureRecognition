@@ -205,6 +205,10 @@ python -m scripts.run_action
 ## 文件与配置
 
 ```text
+docs/                    # 协作规则、决策和修改记录
+  AGENTS.md
+  DECISIONS.md
+  CHANGELOG.md
 config.yaml              # 数据处理、特征、训练、模型和 FSM 的共用参数
 requirements.txt         # 固定依赖
 session_plans/           # 开合与 periodic 采集模板
@@ -223,7 +227,7 @@ data/splits.json         # train / val / acceptance
 runs/                    # 本地复训、实验及诊断产物
 ```
 
-源码中保留的旧 State MLP 采集/训练工具不属于当前 pipeline，发布时留在本地。协作规则见 [AGENTS.md](AGENTS.md)，选择依据与待确认项见 [DECISIONS.md](docs/DECISIONS.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+源码中保留的旧 State MLP 采集/训练工具不属于当前 pipeline，发布时留在本地。协作规则见 [AGENTS.md](docs/AGENTS.md)，选择依据与待确认项见 [DECISIONS.md](docs/DECISIONS.md)，版本变化见 [CHANGELOG.md](docs/CHANGELOG.md)。
 
 ## 参考
 
